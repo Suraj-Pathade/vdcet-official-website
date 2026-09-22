@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FileText, Calendar, Download, Search, Tag } from 'lucide-react';
+import { FileText, Calendar, Download, Search } from 'lucide-react';
 
 interface NoticeItem {
   id: number;
@@ -18,7 +18,6 @@ export default function NoticesPage() {
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedNotice, setSelectedNotice] = useState<NoticeItem | null>(null);
 
   const categories = ['All', 'Admission', 'Academic', 'Examination', 'General'];
 
@@ -29,7 +28,6 @@ export default function NoticesPage() {
   const fetchNotices = async () => {
     setLoading(true);
     try {
-      // Fetch published notices
       const res = await fetch(`/api/public/notices?category=${encodeURIComponent(activeCategory)}`);
       if (res.ok) {
         const data = await res.json();
