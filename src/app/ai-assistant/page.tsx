@@ -11,12 +11,100 @@ interface ChatMessage {
   grounded?: boolean;
 }
 
+const clientKnowledgeBase = [
+  {
+    title: 'Institutional Identity & Location',
+    category: 'General',
+    source_name: 'Official VDCET Institutional Profile',
+    content:
+      'Vilasrao Deshmukh College of Engineering & Technology (VDCET) is situated in Mouda, Bhandara Road, District Nagpur, Maharashtra (PIN: 441104). DTE Institute Code is 04141. Contact phone is 07115-281254 and official email is info@vdcet.in.',
+  },
+  {
+    title: 'Available B.Tech Academic Programs',
+    category: 'Academics',
+    source_name: 'DTE Maharashtra Approved Course List (Code 04141)',
+    content:
+      'VDCET Mouda offers undergraduate Bachelor of Technology (B.Tech) degree programs in four major engineering streams:\n1. Computer Engineering\n2. Artificial Intelligence & Data Science\n3. Civil Engineering\n4. Mechanical Engineering.',
+  },
+  {
+    title: 'Approvals & Institutional Affiliations',
+    category: 'General',
+    source_name: 'Official Accreditation & Approval Records',
+    content:
+      'VDCET Mouda is approved by AICTE (All India Council for Technical Education), New Delhi, and Directorate of Technical Education (DTE), Maharashtra State. DTE Institute Code: 04141. The college is affiliated with Dr. Babasaheb Ambedkar Technological University (DBATU), Lonere and Rashtrasant Tukadoji Maharaj Nagpur University (RTMNU).',
+  },
+  {
+    title: 'B.Tech Admission Eligibility Criteria',
+    category: 'Admissions',
+    source_name: 'Maharashtra State CET Cell Admission Guidelines',
+    content:
+      'For B.Tech admission at VDCET (Code 04141), candidates must pass 10+2 / HSC with Physics and Mathematics as compulsory subjects along with Chemistry/Biotechnology/Biology/Technical Vocational subject. Candidates must possess a valid score in MHT-CET or JEE Main for Maharashtra State CAP allotment rounds.',
+  },
+  {
+    title: 'Required Admission Documents Checklist',
+    category: 'Admissions',
+    source_name: 'VDCET Admission Office Verification List',
+    content:
+      'Essential documents for B.Tech admission verification include: MHT-CET / JEE Main Scorecard, SSC (10th) & HSC (12th) Marksheets, School/College Leaving Certificate, DTE CAP Seat Allotment Letter, Caste Certificate and Caste Validity (if applicable), Income & Domicile Certificates, Aadhaar Card, and Passport-size Photographs.',
+  },
+  {
+    title: 'Campus & Academic Facilities',
+    category: 'Campus',
+    source_name: 'VDCET Campus Facilities Record',
+    content:
+      'VDCET Mouda campus features dedicated computer software and hardware laboratories, digital AI & Data Science labs, Civil & Mechanical engineering workshops, a central reference library, internet connectivity, and student seminar halls.',
+  },
+  {
+    title: 'Official Contact & Office Hours',
+    category: 'Contact',
+    source_name: 'VDCET Administration Office',
+    content:
+      'VDCET Campus Address: Sr. No. 121, 262, Mouza Mouda, Bhandara Road, Taluka Mouda, District Nagpur, Maharashtra - 441104. Phone: 07115-281254. Email: info@vdcet.in.',
+  },
+];
+
+function performClientRAG(query: string) {
+  const queryWords = query.toLowerCase().split(/\W+/).filter((w) => w.length > 2);
+  const FALLBACK_MSG =
+    "I couldn't find this information in the official VDCET knowledge base. Please contact the college office.";
+
+  if (queryWords.length === 0) {
+    return { answer: FALLBACK_MSG, sources: [], grounded: false };
+  }
+
+  const matches = clientKnowledgeBase
+    .map((chunk) => {
+      const fullText = `${chunk.title} ${chunk.category} ${chunk.content}`.toLowerCase();
+      let score = 0;
+      queryWords.forEach((word) => {
+        if (fullText.includes(word)) score += 1;
+      });
+      return { chunk, score };
+    })
+    .filter((m) => m.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (matches.length === 0) {
+    return { answer: FALLBACK_MSG, sources: [], grounded: false };
+  }
+
+  const topChunks = matches.slice(0, 3).map((m) => m.chunk);
+  const answerText = topChunks.map((c) => `${c.title}:\n${c.content}`).join('\n\n');
+  const sources = topChunks.map((c) => ({
+    title: c.title,
+    source_name: c.source_name,
+    category: c.category,
+  }));
+
+  return { answer: answerText, sources, grounded: true };
+}
+
 export default function AIAssistantPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       sender: 'ai',
-      text: "Hello! I am the official VDCET AI Assistant. How can I help you today?",
+      text: 'Hello! I am the official VDCET AI Assistant. How can I help you today?',
       grounded: true,
     },
   ]);
@@ -52,26 +140,32 @@ export default function AIAssistantPage() {
         body: JSON.stringify({ question: query }),
       });
 
-      const data = await res.json();
+      if (!res.ok) {
+        throw new Error('Static host mode');
+      }
 
+      const data = await res.json();
       const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: data.answer || "I couldn't find this information in the official VDCET knowledge base. Please contact the college office.",
+        text:
+          data.answer ||
+          "I couldn't find this information in the official VDCET knowledge base. Please contact the college office.",
         sources: data.sources || [],
         grounded: data.grounded ?? true,
       };
-
       setMessages((prev) => [...prev, aiMsg]);
     } catch {
-      const errorMsg: ChatMessage = {
+      // Fallback to client-side RAG engine for static deployments like GitHub Pages
+      const localResult = performClientRAG(query);
+      const aiMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
-        text: "I couldn't find this information in the official VDCET knowledge base. Please contact the college office.",
-        sources: [],
-        grounded: false,
+        text: localResult.answer,
+        sources: localResult.sources,
+        grounded: localResult.grounded,
       };
-      setMessages((prev) => [...prev, errorMsg]);
+      setMessages((prev) => [...prev, aiMsg]);
     } finally {
       setLoading(false);
     }
@@ -126,12 +220,14 @@ export default function AIAssistantPage() {
               {/* Avatar */}
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                  msg.sender === 'user'
-                    ? 'bg-neutral-900 text-white'
-                    : 'bg-black text-white'
+                  msg.sender === 'user' ? 'bg-neutral-900 text-white' : 'bg-black text-white'
                 }`}
               >
-                {msg.sender === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4 text-amber-300" />}
+                {msg.sender === 'user' ? (
+                  <User className="w-4 h-4" />
+                ) : (
+                  <Bot className="w-4 h-4 text-amber-300" />
+                )}
               </div>
 
               {/* Message Content */}
